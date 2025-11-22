@@ -13,6 +13,7 @@
     <child>
       <object class="GtkCheckButton" id="notif_enabled">
         <property name="label">Enable Notifications</property>
+        <property name="css-classes">rule-label</property>
       </object>
     </child>
 
@@ -24,6 +25,7 @@
         <child>
           <object class="GtkLabel">
             <property name="label">Default Notification Wave:</property>
+            <property name="css-classes">rule-label</property>
           </object>
         </child>
         <child>
@@ -60,15 +62,23 @@
                 <property name="spacing">6</property>
 
                 <!-- Rule Name -->
-                <child><object class="GtkLabel"><property name="label">Rule Name</property></object></child>
+                <child><object class="GtkLabel"><property name="label">Rule Name</property><property name="css-classes">rule-label</property></object></child>
                 <child><object class="GtkEntry" id="rule_name"/></child>
 
-                <!-- Rule Pattern -->
-                <child><object class="GtkLabel"><property name="label">Pattern</property></object></child>
-                <child><object class="GtkEntry" id="rule_pattern"/></child>
+                <!-- Pattern App -->
+                <child><object class="GtkLabel"><property name="label">Pattern App</property><property name="css-classes">rule-label</property></object></child>
+                <child><object class="GtkEntry" id="rule_pattern_app"/></child>
+
+                <!-- Pattern Summary -->
+                <child><object class="GtkLabel"><property name="label">Pattern Summary</property><property name="css-classes">rule-label</property></object></child>
+                <child><object class="GtkEntry" id="rule_pattern_summary"/></child>
+
+                <!-- Pattern Body -->
+                <child><object class="GtkLabel"><property name="label">Pattern Body</property><property name="css-classes">rule-label</property></object></child>
+                <child><object class="GtkEntry" id="rule_pattern_body"/></child>
 
                 <!-- Wave -->
-                <child><object class="GtkLabel"><property name="label">Wave</property></object></child>
+                <child><object class="GtkLabel"><property name="label">Wave</property><property name="css-classes">rule-label</property></object></child>
                 <child><object class="GtkDropDown" id="rule_wave"/></child>
 
                 <!-- Buttons -->
@@ -97,17 +107,8 @@
               <object class="GtkBox">
                 <property name="orientation">horizontal</property>
                 <property name="spacing">8</property>
-                <child><object class="GtkLabel"><property name="label">Link Wave:</property></object></child>
+                <child><object class="GtkLabel"><property name="label">Link Wave:</property><property name="css-classes">rule-label</property></object></child>
                 <child><object class="GtkDropDown" id="cursor_link_wave"/></child>
-              </object>
-            </child>
-
-            <child>
-              <object class="GtkBox">
-                <property name="orientation">horizontal</property>
-                <property name="spacing">8</property>
-                <child><object class="GtkLabel"><property name="label">Edit Wave:</property></object></child>
-                <child><object class="GtkDropDown" id="cursor_edit_wave"/></child>
               </object>
             </child>
 

@@ -11,8 +11,7 @@ DEFAULT_CONFIG = {
         "custom": []
     },
     "cursor": {
-        "link_wave": "SHARP COLLISION",
-        "edit_wave": "FIREWORKS"
+        "link_wave": "DAMP STATE CHANGE"
     }
 }
 
