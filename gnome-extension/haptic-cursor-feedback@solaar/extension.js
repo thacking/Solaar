@@ -4,8 +4,8 @@ import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-const HAND_CURSOR_DELAY_MS = 20;
-const CURSOR_CHECK_INTERVAL_MS = 20; // Check cursor every 50ms
+const HAND_CURSOR_DELAY_MS = 0;
+const CURSOR_CHECK_INTERVAL_MS = 5; // Check cursor every 50ms
 const DBUS_NAME = 'io.github.pwr_solaar.Haptics';
 const DBUS_PATH = '/io/github/pwr_solaar/Haptics';
 const DBUS_INTERFACE = 'io.github.pwr_solaar.Haptics';
@@ -139,28 +139,63 @@ export default class HapticCursorExtension {
         const width = sprite.get_width();
         const height = sprite.get_height();
         
-        // Hand cursors are typically larger than default arrow cursor
-        // Default cursor is usually 24x24 or 32x32
-        // Hand cursor is usually 32x32 or larger with different aspect ratio
-        // This is a heuristic - may need tuning
+        // Get the hot spot (click point) of the cursor
+        const [hotX, hotY] = this._cursorTracker.get_hot();
         
-        // Check if cursor is reasonably large (hand cursors tend to be 24-48 pixels)
-        const minSize = 20;
-        const maxSize = 64;
+        // Hand/pointer cursor has very specific characteristics:
+        // - Size typically 32x32 or 48x48 at 1x scale (64x64 or 96x96 at 2x)
+        // - Hot spot is at the tip of the finger (usually around 1/4 from left, 1/5 from top)
+        // - Aspect ratio very close to 1:1
+        // - Not too small (excludes arrow), not too large (excludes loading spinners)
         
-        if (width < minSize || height < minSize || width > maxSize || height > maxSize) {
+        // Default arrow cursor is typically 24x36 or 32x48 (taller than wide)
+        // Hand cursor is typically 32x32 or 48x48 (square-ish)
+        // I-beam/text cursor is very thin and tall
+        // Loading cursor can be large and circular
+        
+        const aspectRatio = width / height;
+        
+        // Hand cursor is nearly square (0.9 - 1.1 aspect ratio)
+        // Arrow cursor is taller (0.6-0.7), I-beam is very thin (<0.3)
+        if (aspectRatio < 0.85 || aspectRatio > 1.15) {
             return false;
         }
         
-        // Hand cursors often have aspect ratio close to 1:1 but slightly taller
-        const aspectRatio = width / height;
+        // Hand cursor size is medium (not tiny arrow, not huge loading)
+        // At 1x scale: 28-52 pixels, at 2x scale: 56-104 pixels
+        const minDimension = Math.min(width, height);
+        const maxDimension = Math.max(width, height);
         
-        // Hand cursor heuristic: medium size with aspect ratio between 0.7 and 1.3
-        // and total area suggesting it's not the default small arrow
-        const area = width * height;
-        const isLikelyHand = (aspectRatio >= 0.7 && aspectRatio <= 1.3) && (area >= 600);
+        if (minDimension < 28 || maxDimension > 104) {
+            return false;
+        }
         
-        return isLikelyHand;
+        // Hot spot for hand cursor is typically near the finger tip
+        // This is roughly at (1/4, 1/5) from top-left
+        // Arrow cursor hot spot is at tip (0, 0)
+        // I-beam hot spot is centered vertically
+        const hotXRatio = hotX / width;
+        const hotYRatio = hotY / height;
+        
+        // Hand cursor hot spot is NOT at the corner (like arrow)
+        // and NOT centered (like I-beam)
+        // Typically between 0.15-0.35 horizontally and 0.1-0.25 vertically
+        const isHandHotSpot = (hotXRatio >= 0.12 && hotXRatio <= 0.4) &&
+                              (hotYRatio >= 0.08 && hotYRatio <= 0.3);
+        
+        if (!isHandHotSpot) {
+            return false;
+        }
+        
+        // Additional check: size should be consistent (relatively square)
+        const sizeDiff = Math.abs(width - height);
+        if (sizeDiff > 8) {  // Allow small variation but not arrow-like proportions
+            return false;
+        }
+        
+        log(`[HapticCursor] Cursor detected: ${width}x${height}, hot=(${hotX},${hotY}), ratios=(${hotXRatio.toFixed(2)},${hotYRatio.toFixed(2)}), aspect=${aspectRatio.toFixed(2)}`);
+        
+        return true;
     }
 
     _triggerHapticFeedback() {
