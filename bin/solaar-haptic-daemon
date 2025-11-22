@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""Background daemon that keeps a Logitech device ready for instant haptic playback."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+import os.path
+import signal
+import sys
+import threading
+from types import SimpleNamespace
+from typing import Optional
+
+import dbus
+import dbus.service
+from dbus.mainloop.glib import DBusGMainLoop
+from gi.repository import GLib
+
+BUS_NAME = "io.github.pwr_solaar.Haptics"
+OBJECT_PATH = "/io/github/pwr_solaar/Haptics"
+INTERFACE = "io.github.pwr_solaar.Haptics"
+KEEPALIVE_SECONDS = 20
+DEFAULT_WAVEFORM = "HAPPY ALERT"
+
+logger = logging.getLogger(__name__)
+
+
+def init_paths() -> None:
+    root = os.path.join(os.path.realpath(sys.path[0]), "..")
+    prefix = os.path.normpath(root)
+    src_lib = os.path.join(prefix, "lib")
+    share_lib = os.path.join(prefix, "share", "solaar", "lib")
+    for location in (src_lib, share_lib):
+        init_py = os.path.join(location, "solaar", "__init__.py")
+        if os.path.exists(init_py):
+            sys.path[0] = location
+            break
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Keep a Solaar-supported device awake and expose a DBus endpoint for instantaneous haptics.",
+    )
+    parser.add_argument(
+        "device",
+        help="Device selector (slot 1-6, serial, or substring).",
+    )
+    parser.add_argument(
+        "--waveform",
+        default=DEFAULT_WAVEFORM,
+        help=f"Default waveform to trigger (default: {DEFAULT_WAVEFORM}).",
+    )
+    parser.add_argument(
+        "--level",
+        help="Optional haptic level to apply once at startup (name or numeric).",
+    )
+    parser.add_argument(
+        "--hidraw",
+        help="Explicit /dev/hidraw path for the receiver to avoid scanning all devices.",
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging verbosity.",
+    )
+    return parser.parse_args()
+
+
+class HapticBackend:
+    def __init__(self, device_selector: str, hidraw_path: Optional[str], default_waveform: str):
+        from logitech_receiver import base
+        from logitech_receiver import receiver
+        import solaar.cli as cli_core
+        from solaar.cli import haptic as haptic_cli
+
+        self._device_selector = device_selector
+        self._hidraw_path = hidraw_path
+        self._default_waveform = default_waveform
+        self._lock = threading.Lock()
+        self._base = base
+        self._receiver_mod = receiver
+        self._cli_core = cli_core
+        self._haptic_cli = haptic_cli
+        self._device = None
+        self._level_setting = None
+        self._play_setting = None
+
+    def _receivers(self):
+        receivers = []
+        for dev_info in self._base.receivers():
+            if self._hidraw_path and self._hidraw_path != dev_info.path:
+                continue
+            try:
+                recv = self._receiver_mod.create_receiver(self._base, dev_info)
+                if recv:
+                    receivers.append(recv)
+            except Exception as exc:
+                logger.warning("Failed to open receiver %s: %s", dev_info.path, exc)
+        return receivers
+
+    def _ensure_device(self):
+        with self._lock:
+            if self._device and self._device.online:
+                return self._device
+            receivers = self._receivers()
+            if not receivers:
+                raise RuntimeError("no supported receiver available")
+            args = SimpleNamespace(device=self._device_selector)
+            device = self._haptic_cli._pick_device(receivers, args, self._cli_core._find_device)
+            self._device = device
+            self._level_setting = self._haptic_cli._get_setting(device, "haptic-level")
+            self._play_setting = self._haptic_cli._get_setting(device, "haptic-play")
+            if not self._play_setting:
+                raise RuntimeError(f"{device.name} does not expose haptic waveforms")
+            return device
+
+    def ensure_ready(self):
+        dev = self._ensure_device()
+        if not dev.ping():
+            raise RuntimeError("device went offline")
+        return dev
+
+    def apply_level(self, value: str) -> bool:
+        dev = self.ensure_ready()
+        if not self._level_setting:
+            raise RuntimeError(f"{dev.name} does not allow adjusting haptic level")
+        coerced = self._haptic_cli._coerce_level(self._level_setting, value)
+        self._level_setting.write(coerced)
+        logger.info("Set haptic level on %s to %s", dev.name, self._level_setting.val_to_string(coerced))
+        return True
+
+    def play_waveform(self, value: Optional[str] = None) -> bool:
+        dev = self.ensure_ready()
+        setting = self._play_setting
+        if setting is None:
+            raise RuntimeError(f"{dev.name} does not expose haptic waveforms")
+        waveform = self._haptic_cli._coerce_waveform(setting, value or self._default_waveform)
+        setting.write(waveform)
+        logger.debug("Played waveform %s on %s", setting.val_to_string(waveform), dev.name)
+        return True
+
+    def keepalive(self):
+        try:
+            dev = self.ensure_ready()
+            if not dev.ping():
+                logger.warning("Device %s offline, reconnecting", dev)
+                with self._lock:
+                    self._device = None
+            else:
+                logger.debug("Device %s keepalive ok", dev)
+        except Exception as exc:
+            logger.debug("Keepalive failure: %s", exc)
+        return True
+
+
+class HapticDBusService(dbus.service.Object):
+    def __init__(self, backend: HapticBackend, bus: dbus.Bus):
+        self._backend = backend
+        name = dbus.service.BusName(BUS_NAME, bus)
+        super().__init__(name, OBJECT_PATH)
+
+    @dbus.service.method(INTERFACE, in_signature="s", out_signature="b")
+    def PlayWaveform(self, waveform: str):  # noqa: N802 (dbus naming)
+        try:
+            return dbus.Boolean(self._backend.play_waveform(waveform))
+        except Exception as exc:  # pragma: no cover - dbus exposed
+            logger.error("PlayWaveform failed: %s", exc)
+            raise
+
+    @dbus.service.method(INTERFACE, in_signature="s", out_signature="b")
+    def SetLevel(self, level: str):  # noqa: N802
+        try:
+            return dbus.Boolean(self._backend.apply_level(level))
+        except Exception as exc:
+            logger.error("SetLevel failed: %s", exc)
+            raise
+
+    @dbus.service.method(INTERFACE, in_signature="", out_signature="s")
+    def Ping(self):  # noqa: N802
+        dev = self._backend.ensure_ready()
+        return dbus.String(dev.name)
+
+
+def main() -> int:
+    init_paths()
+    args = _parse_args()
+    logging.basicConfig(level=getattr(logging, args.log_level))
+
+    backend = HapticBackend(args.device, args.hidraw, args.waveform)
+    backend.ensure_ready()
+    if args.level:
+        backend.apply_level(args.level)
+
+    DBusGMainLoop(set_as_default=True)
+    session_bus = dbus.SessionBus()
+    service = HapticDBusService(backend, session_bus)
+    logger.info("Started haptic DBus service at %s (%s)", BUS_NAME, args.device)
+
+    GLib.timeout_add_seconds(KEEPALIVE_SECONDS, backend.keepalive)
+
+    loop = GLib.MainLoop()
+
+    def _stop(_sig, _frame):
+        logger.info("Stopping haptic service")
+        loop.quit()
+
+    signal.signal(signal.SIGINT, _stop)
+    signal.signal(signal.SIGTERM, _stop)
+
+    backend.play_waveform(args.waveform)
+    loop.run()
+    service.remove_from_connection()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
