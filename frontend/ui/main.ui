@@ -63,7 +63,7 @@
                 <child><object class="GtkLabel"><property name="label">Rule Name</property></object></child>
                 <child><object class="GtkEntry" id="rule_name"/></child>
 
-                <!-- Rule Pattern (NEW) -->
+                <!-- Rule Pattern -->
                 <child><object class="GtkLabel"><property name="label">Pattern</property></object></child>
                 <child><object class="GtkEntry" id="rule_pattern"/></child>
 
@@ -116,6 +116,15 @@
 
       </object>
     </child>
+
+    <!-- Save Config Button -->
+    <child>
+      <object class="GtkButton" id="save_button">
+        <property name="label">Save Settings</property>
+        <property name="halign">END</property>
+      </object>
+    </child>
+
   </object>
 
 </interface>

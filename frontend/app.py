@@ -29,12 +29,13 @@ class MainWindow(Gtk.ApplicationWindow):
         self.notif_default_wave = builder.get_object("notif_default_wave")
         self.rules_list = builder.get_object("rules_list")
         self.rule_name = builder.get_object("rule_name")
-        self.rule_pattern = builder.get_object("rule_pattern")  # NEW
+        self.rule_pattern = builder.get_object("rule_pattern")
         self.rule_wave = builder.get_object("rule_wave")
         self.rule_add = builder.get_object("rule_add")
         self.rule_delete = builder.get_object("rule_delete")
         self.cursor_link_wave = builder.get_object("cursor_link_wave")
         self.cursor_edit_wave = builder.get_object("cursor_edit_wave")
+        self.save_button = builder.get_object("save_button")  # NEW
 
         # Load config
         self.config = load_config()
@@ -73,14 +74,15 @@ class MainWindow(Gtk.ApplicationWindow):
         factory.connect("bind", self.bind_rule_item)
         self.rules_list.set_factory(factory)
 
-        # Connect signals with handler references
+        # Connect signals
         self.rule_name_handler = self.rule_name.connect("changed", self.on_rule_edit)
-        self.rule_pattern_handler = self.rule_pattern.connect("changed", self.on_rule_edit)  # NEW
+        self.rule_pattern_handler = self.rule_pattern.connect("changed", self.on_rule_edit)
         self.rule_wave_handler = self.rule_wave.connect("notify::selected", self.on_rule_edit)
         self.selection_handler = self.rules_selection.connect("notify::selected", self.on_rule_select)
 
         self.rule_add.connect("clicked", self.on_rule_add)
         self.rule_delete.connect("clicked", self.on_rule_delete)
+        self.save_button.connect("clicked", self.on_save_button)  # NEW
 
     # ---------- List row creation ----------
     def setup_rule_item(self, factory, list_item):
@@ -109,13 +111,12 @@ class MainWindow(Gtk.ApplicationWindow):
 
         rule = self.config["notifications"]["custom"][pos]
 
-        # Block edit signals while updating UI
         self.rule_name.handler_block(self.rule_name_handler)
         self.rule_pattern.handler_block(self.rule_pattern_handler)
         self.rule_wave.handler_block(self.rule_wave_handler)
 
         self.rule_name.set_text(rule["name"])
-        self.rule_pattern.set_text(rule.get("pattern", ""))  # NEW
+        self.rule_pattern.set_text(rule.get("pattern", ""))
         self.rule_wave.set_selected(WAVE_OPTIONS.index(rule["wave"]))
 
         self.rule_name.handler_unblock(self.rule_name_handler)
@@ -127,11 +128,7 @@ class MainWindow(Gtk.ApplicationWindow):
         new_rule = {"name": "New Rule", "pattern": "", "wave": WAVE_OPTIONS[0]}
         self.config["notifications"]["custom"].append(new_rule)
         self.rules.append(Gtk.StringObject.new(new_rule["name"]))
-
-        # Select the newly added rule
-        index = len(self.config["notifications"]["custom"]) - 1
-        self.rules_selection.set_selected(index)
-
+        self.rules_selection.set_selected(len(self.config["notifications"]["custom"]) - 1)
         save_config(self.config)
 
     # ---------- Delete rule ----------
@@ -143,7 +140,6 @@ class MainWindow(Gtk.ApplicationWindow):
         self.rules.remove(pos)
         self.config["notifications"]["custom"].pop(pos)
 
-        # Clear UI fields
         self.rule_name.handler_block(self.rule_name_handler)
         self.rule_pattern.handler_block(self.rule_pattern_handler)
         self.rule_wave.handler_block(self.rule_wave_handler)
@@ -157,7 +153,6 @@ class MainWindow(Gtk.ApplicationWindow):
         self.rule_wave.handler_unblock(self.rule_wave_handler)
 
         self.rules_selection.unselect_all()
-
         save_config(self.config)
 
     # ---------- Edit rule ----------
@@ -167,37 +162,44 @@ class MainWindow(Gtk.ApplicationWindow):
             return
 
         rule = self.config["notifications"]["custom"][pos]
+        rule["name"] = self.rule_name.get_text()
+        rule["pattern"] = self.rule_pattern.get_text()
+        rule["wave"] = WAVE_OPTIONS[self.rule_wave.get_selected()]
 
-        new_name = self.rule_name.get_text()
-        new_pattern = self.rule_pattern.get_text()  # NEW
-        new_wave = WAVE_OPTIONS[self.rule_wave.get_selected()]
-
-        # Update config
-        rule["name"] = new_name
-        rule["pattern"] = new_pattern
-        rule["wave"] = new_wave
-
-        # Replace StringObject safely with signal blocking
         self.rules_selection.handler_block(self.selection_handler)
         self.rules.remove(pos)
-        self.rules.insert(pos, Gtk.StringObject.new(new_name))
+        self.rules.insert(pos, Gtk.StringObject.new(rule["name"]))
         self.rules_selection.set_selected(pos)
         self.rules_selection.handler_unblock(self.selection_handler)
 
         save_config(self.config)
 
-    # ---------- Save on close ----------
-    def do_close_request(self, *_):
+    # ---------- Save button ----------
+    def on_save_button(self, *_):
+        # Save top-level notifications and cursor settings
         self.config["notifications"]["enabled"] = self.notif_enabled.get_active()
-        self.config["notifications"]["default_wave"] = \
-            WAVE_OPTIONS[self.notif_default_wave.get_selected()]
+        self.config["notifications"]["default_wave"] = WAVE_OPTIONS[self.notif_default_wave.get_selected()]
+        self.config["cursor"]["link_wave"] = WAVE_OPTIONS[self.cursor_link_wave.get_selected()]
+        self.config["cursor"]["edit_wave"] = WAVE_OPTIONS[self.cursor_edit_wave.get_selected()]
 
-        self.config["cursor"]["link_wave"] = \
-            WAVE_OPTIONS[self.cursor_link_wave.get_selected()]
-        self.config["cursor"]["edit_wave"] = \
-            WAVE_OPTIONS[self.cursor_edit_wave.get_selected()]
+        # Save currently selected rule
+        pos = self.rules_selection.get_selected()
+        if pos >= 0:
+            rule = self.config["notifications"]["custom"][pos]
+            rule["name"] = self.rule_name.get_text()
+            rule["pattern"] = self.rule_pattern.get_text()
+            rule["wave"] = WAVE_OPTIONS[self.rule_wave.get_selected()]
+            self.rules_selection.handler_block(self.selection_handler)
+            self.rules.remove(pos)
+            self.rules.insert(pos, Gtk.StringObject.new(rule["name"]))
+            self.rules_selection.set_selected(pos)
+            self.rules_selection.handler_unblock(self.selection_handler)
 
         save_config(self.config)
+
+    # ---------- Save on close ----------
+    def do_close_request(self, *_):
+        self.on_save_button()
         return False
 
 
