@@ -10,6 +10,7 @@ let
     dbus-python
     pygobject3
     typing-extensions
+    pydbus
     
     # Dev dependencies
     pytest

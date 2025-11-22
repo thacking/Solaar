@@ -34,6 +34,7 @@ Solaar supports:
 - configuring device settings
 - custom button configuration
 - running rules in response to special messages from devices
+- experimental haptic helpers for GNOME, see [`docs/haptic-daemon.md`](docs/haptic-daemon.md)
 
 For more information see
     <a href="https://pwr-solaar.github.io/Solaar/index">the main Solaar documentation page.</a> -
