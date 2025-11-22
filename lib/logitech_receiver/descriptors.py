@@ -409,7 +409,6 @@ _D(
     "MX Master 4 Wireless Mouse",
     codename="MX Master 4",
     protocol=4.5,
-    wpid="B042",
     btid=0xB042,
     usbid=0xB042,
 )
