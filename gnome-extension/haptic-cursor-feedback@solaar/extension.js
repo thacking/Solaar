@@ -9,7 +9,8 @@ const CURSOR_CHECK_INTERVAL_MS = 5; // Check cursor every 50ms
 const DBUS_NAME = 'io.github.pwr_solaar.Haptics';
 const DBUS_PATH = '/io/github/pwr_solaar/Haptics';
 const DBUS_INTERFACE = 'io.github.pwr_solaar.Haptics';
-const WAVEFORM = 'DAMP COLLISION';
+const DEFAULT_WAVEFORM = 'DAMP COLLISION';
+const SETTINGS_FILE_PATH = GLib.build_filenamev([GLib.get_home_dir(), '.config', 'haptics', 'settings.json']);
 
 export default class HapticCursorExtension {
     constructor() {
@@ -21,10 +22,19 @@ export default class HapticCursorExtension {
         this._isHandCursor = false;
         this._hapticTriggered = false;
         this._handCursorStartTime = null;
+        this._waveform = DEFAULT_WAVEFORM;
+        this._settingsFileMonitor = null;
+        this._settingsMonitorId = null;
     }
 
     enable() {
         log('[HapticCursor] Enabling extension');
+        
+        // Load settings from file
+        this._loadSettings();
+        
+        // Monitor settings file for changes
+        this._setupSettingsMonitor();
         
         // Get the cursor tracker from the compositor backend
         this._cursorTracker = global.backend.get_cursor_tracker();
@@ -47,6 +57,9 @@ export default class HapticCursorExtension {
         // Stop polling
         this._stopPolling();
         
+        // Stop monitoring settings file
+        this._cleanupSettingsMonitor();
+        
         // Disconnect cursor tracker signal
         if (this._cursorChangedId && this._cursorTracker) {
             this._cursorTracker.disconnect(this._cursorChangedId);
@@ -64,6 +77,7 @@ export default class HapticCursorExtension {
         this._isHandCursor = false;
         this._hapticTriggered = false;
         this._handCursorStartTime = null;
+        this._waveform = DEFAULT_WAVEFORM;
         
         log('[HapticCursor] Extension disabled');
     }
@@ -87,6 +101,87 @@ export default class HapticCursorExtension {
         if (this._pollTimeoutId) {
             GLib.Source.remove(this._pollTimeoutId);
             this._pollTimeoutId = null;
+        }
+    }
+
+    _loadSettings() {
+        try {
+            const file = Gio.File.new_for_path(SETTINGS_FILE_PATH);
+            
+            if (!file.query_exists(null)) {
+                log(`[HapticCursor] Settings file not found at ${SETTINGS_FILE_PATH}, using default waveform`);
+                this._waveform = DEFAULT_WAVEFORM;
+                return;
+            }
+            
+            const [success, contents] = file.load_contents(null);
+            
+            if (!success) {
+                log('[HapticCursor] Failed to read settings file, using default waveform');
+                this._waveform = DEFAULT_WAVEFORM;
+                return;
+            }
+            
+            const decoder = new TextDecoder('utf-8');
+            const text = decoder.decode(contents);
+            
+            // Parse JSON
+            const settings = JSON.parse(text);
+            
+            if (settings && settings.cursor && settings.cursor.link_wave) {
+                const waveform = settings.cursor.link_wave;
+                this._waveform = waveform;
+                log(`[HapticCursor] Loaded cursor waveform from settings: ${waveform}`);
+            } else {
+                log('[HapticCursor] No cursor.link_wave found in settings, using default waveform');
+                this._waveform = DEFAULT_WAVEFORM;
+            }
+        } catch (e) {
+            logError(e, '[HapticCursor] Error loading settings file');
+            this._waveform = DEFAULT_WAVEFORM;
+        }
+    }
+
+    _setupSettingsMonitor() {
+        try {
+            const file = Gio.File.new_for_path(SETTINGS_FILE_PATH);
+            
+            // Create parent directory monitoring if file doesn't exist yet
+            const parentDir = file.get_parent();
+            
+            if (!parentDir.query_exists(null)) {
+                log('[HapticCursor] Settings directory does not exist, skipping file monitoring');
+                return;
+            }
+            
+            this._settingsFileMonitor = file.monitor_file(Gio.FileMonitorFlags.NONE, null);
+            
+            this._settingsMonitorId = this._settingsFileMonitor.connect('changed', 
+                (monitor, file, otherFile, eventType) => {
+                    if (eventType === Gio.FileMonitorEvent.CHANGES_DONE_HINT ||
+                        eventType === Gio.FileMonitorEvent.CREATED ||
+                        eventType === Gio.FileMonitorEvent.DELETED) {
+                        log('[HapticCursor] Settings file changed, reloading...');
+                        this._loadSettings();
+                    }
+                }
+            );
+            
+            log(`[HapticCursor] Monitoring settings file: ${SETTINGS_FILE_PATH}`);
+        } catch (e) {
+            logError(e, '[HapticCursor] Error setting up settings file monitor');
+        }
+    }
+
+    _cleanupSettingsMonitor() {
+        if (this._settingsMonitorId && this._settingsFileMonitor) {
+            this._settingsFileMonitor.disconnect(this._settingsMonitorId);
+            this._settingsMonitorId = null;
+        }
+        
+        if (this._settingsFileMonitor) {
+            this._settingsFileMonitor.cancel();
+            this._settingsFileMonitor = null;
         }
     }
 
@@ -206,7 +301,7 @@ export default class HapticCursorExtension {
         
         this._hapticTriggered = true;
         
-        log('[HapticCursor] Triggering haptic feedback');
+        log(`[HapticCursor] Triggering haptic feedback with waveform: ${this._waveform}`);
         
         try {
             // Call the haptic D-Bus service
@@ -217,7 +312,7 @@ export default class HapticCursorExtension {
                 DBUS_PATH,
                 DBUS_INTERFACE,
                 'PlayWaveform',
-                new GLib.Variant('(s)', [WAVEFORM]),
+                new GLib.Variant('(s)', [this._waveform]),
                 null,
                 Gio.DBusCallFlags.NONE,
                 -1,
