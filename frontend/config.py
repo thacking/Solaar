@@ -1,8 +1,8 @@
-import yaml
+import json
 import os
 
 CONFIG_DIR = os.path.expanduser("~/.config/haptics")
-CONFIG_FILE = os.path.join(CONFIG_DIR, "settings.yaml")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "settings.json")
 
 DEFAULT_CONFIG = {
     "notifications": {
@@ -22,10 +22,10 @@ def load_config():
         return DEFAULT_CONFIG
 
     with open(CONFIG_FILE, "r") as f:
-        return yaml.safe_load(f)
+        return json.load(f)
 
 
 def save_config(config):
     os.makedirs(CONFIG_DIR, exist_ok=True)
     with open(CONFIG_FILE, "w") as f:
-        yaml.dump(config, f, sort_keys=False)
+        json.dump(config, f, sort_keys=False)
