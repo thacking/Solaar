@@ -50,13 +50,31 @@ from .common import NamedInt
 from .hidpp20 import SupportedFeature
 from .special_keys import CONTROL
 
-gi.require_version("Gdk", "3.0")  # isort:skip
-from gi.repository import Gdk, GLib  # NOQA: E402 # isort:skip
+try:  # GLib is required for timers
+    gi.require_version("GLib", "2.0")
+except ValueError:
+    pass
+
+from gi.repository import GLib  # NOQA: E402 # isort:skip
+
+_gdk_import_error = None
+try:  # Gdk might not be available under sudo/headless runs
+    gi.require_version("Gdk", "3.0")
+    from gi.repository import Gdk  # NOQA: E402 # isort:skip
+except (ValueError, ImportError) as _err:  # noqa: N818 - keep lowercase name
+    Gdk = None
+    _gdk_import_error = _err
 
 if typing.TYPE_CHECKING:
     from .base import HIDPPNotification
 
 logger = logging.getLogger(__name__)
+
+if _gdk_import_error:
+    logger.warning(
+        "Gdk namespace not available (%s); Solaar rules depending on keymap access are disabled",
+        _gdk_import_error,
+    )
 
 #
 # See docs/rules.md for documentation
@@ -98,10 +116,14 @@ _BUTTON_PRESS = 3
 
 CLICK, DEPRESS, RELEASE = "click", "depress", "release"
 
-gdisplay = Gdk.Display.get_default()  # can be None if Solaar is run without a full window system
-gkeymap = Gdk.Keymap.get_for_display(gdisplay) if gdisplay else None
-if logger.isEnabledFor(logging.INFO):
-    logger.info("GDK Keymap %sset up", "" if gkeymap else "not ")
+if Gdk:
+    gdisplay = Gdk.Display.get_default()  # can be None if Solaar is run without a full window system
+    gkeymap = Gdk.Keymap.get_for_display(gdisplay) if gdisplay else None
+    if logger.isEnabledFor(logging.INFO):
+        logger.info("GDK Keymap %sset up", "" if gkeymap else "not ")
+else:
+    gdisplay = None
+    gkeymap = None
 
 wayland = os.getenv("WAYLAND_DISPLAY")  # is this Wayland?
 if wayland:
@@ -820,13 +842,16 @@ class Setting(Condition):
         return {"Setting": self.args[:]}
 
 
-MODIFIERS = {
-    "Shift": int(Gdk.ModifierType.SHIFT_MASK),
-    "Control": int(Gdk.ModifierType.CONTROL_MASK),
-    "Alt": int(Gdk.ModifierType.MOD1_MASK),
-    "Super": int(Gdk.ModifierType.MOD4_MASK),
-}
-MODIFIER_MASK = MODIFIERS["Shift"] + MODIFIERS["Control"] + MODIFIERS["Alt"] + MODIFIERS["Super"]
+if Gdk:
+    MODIFIERS = {
+        "Shift": int(Gdk.ModifierType.SHIFT_MASK),
+        "Control": int(Gdk.ModifierType.CONTROL_MASK),
+        "Alt": int(Gdk.ModifierType.MOD1_MASK),
+        "Super": int(Gdk.ModifierType.MOD4_MASK),
+    }
+else:
+    MODIFIERS = {}
+MODIFIER_MASK = sum(MODIFIERS.values())
 
 
 class Modifiers(Condition):
@@ -1165,6 +1190,8 @@ def keysym_to_keycode(keysym, _modifiers) -> Tuple[int, int]:  # maybe should ta
     This is an attempt to reverse the keycode to keysym mappping in XKB.
     It may not be completely general.
     """
+    if not gkeymap:
+        return None, None
     group = kbdgroup() or 0
     keycodes = gkeymap.get_entries_for_keyval(keysym)
     (keycode, level) = (None, None)

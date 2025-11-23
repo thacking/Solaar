@@ -1,0 +1,12 @@
+{
+  "name": "Haptic Cursor Feedback",
+  "description": "Provides haptic feedback when cursor changes to a clickable hand icon",
+  "uuid": "haptic-cursor-feedback@solaar",
+  "shell-version": [
+    "47",
+    "48",
+    "49"
+  ],
+  "url": "https://github.com/pwr-Solaar/Solaar",
+  "version": 2
+}

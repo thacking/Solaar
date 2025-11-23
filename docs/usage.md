@@ -143,6 +143,10 @@ done using the main window. For more information on the
 command line interface, run `solaar --help` to see the commands and
 then `solaar <command> --help` to see the arguments to any of the commands.
 
+### Haptic command-line helper
+
+Use `solaar haptic <device>` to inspect or trigger the haptic motor on devices that expose the HID++ haptic feature (such as the MX Master 4).  The `--list` flag prints the current feedback level and supported waveforms, `--level` changes the persistent vibration strength, and `--play` fires a single waveform immediately.
+
 ## Solaar settings
 
 Solaar supports at least the following settings:
@@ -165,6 +169,8 @@ Backlight   			 | Turn on backlight
 Swap Fx function		 | Change Fn keys to normally do their special action
 DPI Sliding Adjustment		 | Change Sensitivity (DPI) by holding a button and moving the mouse
 Mouse Gestures			 | Create HID++ events by holding a button and moving the mouse
+Haptic Feedback Level		 | Change strength of supported device haptic motors
+Play Haptic Waveform (CLI)	 | Trigger a one-off predefined vibration pattern via `solaar config <device> haptic-play <wave>`
 Key/Button Actions   		 | Change what a key or button does
 Key/Button Diversion		 | Divert keys and buttons to create HID++ events
 Divert crown events		 | Divert crown actions to create HID++ events
