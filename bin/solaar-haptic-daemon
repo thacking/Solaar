@@ -18,14 +18,18 @@ import dbus.service
 from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 
+import subprocess
+
+from custom_rules import load_rules, select_wave_for_notification, NotificationSettings
+
 BUS_NAME = "io.github.pwr_solaar.Haptics"
 OBJECT_PATH = "/io/github/pwr_solaar/Haptics"
 INTERFACE = "io.github.pwr_solaar.Haptics"
 KEEPALIVE_SECONDS = 20
-DEFAULT_WAVEFORM = "HAPPY ALERT"
+DEFAULT_WAVE = "HAPPY ALERT"
 
+settings: NotificationSettings = load_rules()
 logger = logging.getLogger(__name__)
-
 
 def init_paths() -> None:
     root = os.path.join(os.path.realpath(sys.path[0]), "..")
@@ -38,7 +42,6 @@ def init_paths() -> None:
             sys.path[0] = location
             break
 
-
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Keep a Solaar-supported device awake and expose a DBus endpoint for instantaneous haptics.",
@@ -48,9 +51,9 @@ def _parse_args() -> argparse.Namespace:
         help="Device selector (slot 1-6, serial, or substring).",
     )
     parser.add_argument(
-        "--waveform",
-        default=DEFAULT_WAVEFORM,
-        help=f"Default waveform to trigger (default: {DEFAULT_WAVEFORM}).",
+        "--wave",
+        default=DEFAULT_WAVE,
+        help=f"Default wave to trigger (default: {DEFAULT_WAVE}).",
     )
     parser.add_argument(
         "--level",
@@ -68,9 +71,8 @@ def _parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
 class HapticBackend:
-    def __init__(self, device_selector: str, hidraw_path: Optional[str], default_waveform: str):
+    def __init__(self, device_selector: str, hidraw_path: Optional[str], default_wave: str):
         from logitech_receiver import base
         from logitech_receiver import receiver
         import solaar.cli as cli_core
@@ -78,7 +80,7 @@ class HapticBackend:
 
         self._device_selector = device_selector
         self._hidraw_path = hidraw_path
-        self._default_waveform = default_waveform
+        self._default_wave = default_wave
         self._lock = threading.Lock()
         self._base = base
         self._receiver_mod = receiver
@@ -114,7 +116,7 @@ class HapticBackend:
             self._level_setting = self._haptic_cli._get_setting(device, "haptic-level")
             self._play_setting = self._haptic_cli._get_setting(device, "haptic-play")
             if not self._play_setting:
-                raise RuntimeError(f"{device.name} does not expose haptic waveforms")
+                raise RuntimeError(f"{device.name} does not expose haptic waves")
             return device
 
     def ensure_ready(self):
@@ -132,14 +134,14 @@ class HapticBackend:
         logger.info("Set haptic level on %s to %s", dev.name, self._level_setting.val_to_string(coerced))
         return True
 
-    def play_waveform(self, value: Optional[str] = None) -> bool:
+    def play_wave(self, value: Optional[str] = None) -> bool:
         dev = self.ensure_ready()
         setting = self._play_setting
         if setting is None:
-            raise RuntimeError(f"{dev.name} does not expose haptic waveforms")
-        waveform = self._haptic_cli._coerce_waveform(setting, value or self._default_waveform)
-        setting.write(waveform)
-        logger.debug("Played waveform %s on %s", setting.val_to_string(waveform), dev.name)
+            raise RuntimeError(f"{dev.name} does not expose haptic waves")
+        wave = self._haptic_cli._coerce_waveform(setting, value or self._default_wave)
+        setting.write(wave)
+        logger.debug("Played wave %s on %s", setting.val_to_string(wave), dev.name)
         return True
 
     def keepalive(self):
@@ -163,11 +165,11 @@ class HapticDBusService(dbus.service.Object):
         super().__init__(name, OBJECT_PATH)
 
     @dbus.service.method(INTERFACE, in_signature="s", out_signature="b")
-    def PlayWaveform(self, waveform: str):  # noqa: N802 (dbus naming)
+    def PlayWave(self, wave: str):  # noqa: N802 (dbus naming)
         try:
-            return dbus.Boolean(self._backend.play_waveform(waveform))
+            return dbus.Boolean(self._backend.play_wave(wave))
         except Exception as exc:  # pragma: no cover - dbus exposed
-            logger.error("PlayWaveform failed: %s", exc)
+            logger.error("PlayWave failed: %s", exc)
             raise
 
     @dbus.service.method(INTERFACE, in_signature="s", out_signature="b")
@@ -183,13 +185,240 @@ class HapticDBusService(dbus.service.Object):
         dev = self._backend.ensure_ready()
         return dbus.String(dev.name)
 
+def register_notification_handler(session_bus: dbus.Bus, backend: HapticBackend) -> None:
+
+    def _notification_filter(bus, message):
+        try:
+            iface = message.get_interface()
+            member = message.get_member()
+
+            # for debugging
+            # logger.debug("D-Bus message: iface=%s member=%s path=%s",
+            #              iface, member, message.get_path())
+
+            if iface == "org.freedesktop.Notifications" and member in (
+                "NotificationClosed",
+                "ActionInvoked",
+            ):
+                logger.info(
+                    "Notification-Signal %s empfangen – Haptik wird ausgelöst", member
+                )
+                backend.play_wave()
+        except Exception as exc:
+            logger.error("Error while processing the notification: %s", exc)
+
+    # all signals from this interface
+    session_bus.add_match_string_non_blocking(
+        "type='signal',interface='org.freedesktop.Notifications'"
+    )
+    session_bus.add_message_filter(_notification_filter)
+
+    logger.info(
+        "Notification handler for org.freedesktop.Notifications.*-signals registered"
+    )
+
+def start_notification_monitor(backend: HapticBackend):
+    def _run():
+        cmd = [
+            "dbus-monitor",
+            "--session",
+            "interface='org.freedesktop.Notifications',member='Notify'",
+        ]
+        logger.info("Starte dbus-monitor für Notifications...")
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+
+        current_block = []
+        in_notify = False
+
+        try:
+            for raw_line in process.stdout:
+                line = raw_line.rstrip("\n")
+                if not line:
+                    continue
+
+                # logger.debug("dbus-monitor: %s", line)
+
+                if "member=Notify" in line and "org.freedesktop.Notifications" in line:
+                    # new notif block begins
+                    in_notify = True
+                    current_block = [line]
+                    continue
+
+                if in_notify:
+                    current_block.append(line)
+
+                    if line.strip().startswith("int32 "):
+                        # parse block
+                        app_name, summary, body = log_notification_block(current_block)
+
+                        # choose rule
+                        wave = select_wave_for_notification(
+                            app_name=app_name,
+                            summary=summary,
+                            body=body,
+                            settings=settings,
+                        )
+
+                        if wave is not None:
+                            try:
+                                backend.play_wave(wave)
+                            except Exception as exc:
+                                logger.error("Haptic playback failed: %s", exc)
+                        else:
+                            logger.debug("Notifications disabled in settings → no haptic.")
+
+                        in_notify = False
+                        current_block = []
+
+        except Exception as exc:
+            logger.error("Fehler im dbus-monitor-Thread: %s", exc)
+        finally:
+            process.terminate()
+            logger.info("dbus-monitor für Notifications beendet")
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+
+def log_notification_block(lines: list[str]) -> tuple[str | None, str | None, str | None]:
+
+    app_name = None
+    replaces_id = None
+    app_icon = None
+    summary = None
+    body = None
+    actions = []
+    hints = {}
+    expire_timeout = None
+
+    def _extract_string(line: str) -> str:
+        try:
+            first = line.index('"') + 1
+            last = line.rindex('"')
+            return line[first:last]
+        except ValueError:
+            return line
+
+    state = "params"  # "params", "actions", "hints"
+    string_param_index = 0  # counts main-strings (app_name, app_icon, summary, body)
+    current_hint_key = None
+    expect_hint_value = False
+
+    for raw in lines:
+        line = raw.strip()
+
+        # skip empty lines
+        if not line:
+            continue
+
+        # skip meta
+        if "member=Notify" in line and "org.freedesktop.Notifications" in line:
+            continue
+
+        if line.startswith("uint32 "):
+            if replaces_id is None:
+                try:
+                    replaces_id = int(line.split()[1])
+                except (IndexError, ValueError):
+                    pass
+            continue
+
+        if line.startswith("int32 "):
+            try:
+                expire_timeout = int(line.split()[1])
+            except (IndexError, ValueError):
+                pass
+            continue
+
+        if line.startswith("array ["):
+            if state == "params":
+                state = "actions"
+            elif state == "actions":
+                state = "hints"
+            continue
+
+        # process strings by state
+        if line.startswith('string "'):
+            val = _extract_string(line)
+
+            if state == "params":
+                if string_param_index == 0:
+                    app_name = val
+                elif string_param_index == 1:
+                    app_icon = val
+                elif string_param_index == 2:
+                    summary = val
+                elif string_param_index == 3:
+                    body = val
+                string_param_index += 1
+
+            elif state == "actions":
+                actions.append(val)
+
+            elif state == "hints":
+                if current_hint_key is None:
+                    current_hint_key = val
+                    expect_hint_value = False
+                elif expect_hint_value:
+                    hints[current_hint_key] = val
+                    current_hint_key = None
+                    expect_hint_value = False
+
+            continue
+
+        if state == "hints":
+            if line.startswith("dict entry("):
+                current_hint_key = None
+                expect_hint_value = False
+                continue
+            if line.startswith("variant"):
+                expect_hint_value = True
+                continue
+            if expect_hint_value and current_hint_key is not None:
+                parts = line.split()
+                if parts:
+                    hints[current_hint_key] = " ".join(parts)
+                current_hint_key = None
+                expect_hint_value = False
+                continue
+
+    # log
+    logger.debug(
+        "Notification empfangen:\n"
+        "  app_name      = %r\n"
+        "  replaces_id   = %r\n"
+        "  app_icon      = %r\n"
+        "  summary       = %r\n"
+        "  body          = %r\n"
+        "  actions       = %r\n"
+        "  hints         = %r\n"
+        "  expire_timeout= %r",
+        app_name,
+        replaces_id,
+        app_icon,
+        summary,
+        body,
+        actions,
+        hints,
+        expire_timeout,
+    )
+
+    return app_name, summary, body
+
 
 def main() -> int:
     init_paths()
     args = _parse_args()
     logging.basicConfig(level=getattr(logging, args.log_level))
 
-    backend = HapticBackend(args.device, args.hidraw, args.waveform)
+    backend = HapticBackend(args.device, args.hidraw, args.wave)
     backend.ensure_ready()
     if args.level:
         backend.apply_level(args.level)
@@ -198,6 +427,9 @@ def main() -> int:
     session_bus = dbus.SessionBus()
     service = HapticDBusService(backend, session_bus)
     logger.info("Started haptic DBus service at %s (%s)", BUS_NAME, args.device)
+
+#   register_notification_handler(session_bus, backend)  # optional, for signals - useless lol
+    start_notification_monitor(backend)  # sniff notify calls
 
     GLib.timeout_add_seconds(KEEPALIVE_SECONDS, backend.keepalive)
 
@@ -210,11 +442,10 @@ def main() -> int:
     signal.signal(signal.SIGINT, _stop)
     signal.signal(signal.SIGTERM, _stop)
 
-    backend.play_waveform(args.waveform)
+    backend.play_wave(args.wave)
     loop.run()
     service.remove_from_connection()
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
