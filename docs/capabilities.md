@@ -174,6 +174,23 @@ is sent to the Solaar rule system so that rules can detect these notifications.
 For more information on Mouse Gestures rule conditions see
 [the rules page](https://pwr-solaar.github.io/Solaar/rules).
 
+### Haptic feedback control
+
+Some recent mice, starting with the MX Master 4, advertise the HID++ `HAPTIC` feature.  Solaar automatically exposes two hidden settings for these devices:
+
+* `haptic-level` – a slider (also configurable from the CLI) that adjusts overall vibration strength or disables haptics entirely.
+* `haptic-play` – a CLI-only helper that can trigger one of the predefined Logitech waveforms on demand.
+
+The Solaar GUI lists `Haptic Feedback Level` once a supported device is selected.  From the command line you can use the dedicated helper:
+
+```bash
+solaar haptic "MX Master 4" --list
+solaar haptic "MX Master 4" --level Medium
+solaar haptic "MX Master 4" --play Sharp_State_Change
+```
+
+`solaar haptic --list` shows the current level and every waveform advertised by the device (for example `SHARP_STATE_CHANGE`, `DAMP_COLLISION`, `HAPPY_ALERT`, etc.).  You can still fall back to `solaar config <device> haptic-level` or `haptic-play` if you need to script against raw settings names.  Playing a waveform is immediate and does not persist, while the haptic level is remembered per host like other Solaar settings.
+
 ### Keyboard Key Names and Locations
 
 Solaar uses the standard Logitech names for keyboard keys.  Some Logitech keyboards have different icons on some of their keys and have different functionality than suggested by these names.

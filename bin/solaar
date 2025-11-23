@@ -37,6 +37,14 @@ def init_paths():
 
 if __name__ == "__main__":
     init_paths()
-    import solaar.gtk
 
-    solaar.gtk.main()
+    import sys
+
+    if len(sys.argv) > 1:  # command-line mode
+        from solaar import cli
+
+        cli.run(sys.argv[1:])
+    else:
+        import solaar.gtk
+
+        solaar.gtk.main()

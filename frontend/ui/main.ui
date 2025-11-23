@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+
+  <object class="GtkBox" id="root">
+    <property name="orientation">vertical</property>
+    <property name="spacing">12</property>
+    <property name="margin-top">12</property>
+    <property name="margin-start">12</property>
+    <property name="margin-end">12</property>
+    <property name="margin-bottom">12</property>
+
+    <!-- Notifications enabled -->
+    <child>
+      <object class="GtkCheckButton" id="notif_enabled">
+        <property name="label">Enable Notifications</property>
+        <property name="css-classes">rule-label</property>
+      </object>
+    </child>
+
+    <!-- Default Notification Wave -->
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">horizontal</property>
+        <property name="spacing">8</property>
+        <child>
+          <object class="GtkLabel">
+            <property name="label">Default Notification Wave:</property>
+            <property name="css-classes">rule-label</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkDropDown" id="notif_default_wave"/>
+        </child>
+      </object>
+    </child>
+
+    <!-- Custom Rules -->
+    <child>
+      <object class="GtkFrame">
+        <property name="label">Custom Notification Rules</property>
+
+        <child>
+          <object class="GtkBox">
+            <property name="orientation">horizontal</property>
+            <property name="spacing">12</property>
+
+            <!-- List -->
+            <child>
+              <object class="GtkScrolledWindow">
+                <property name="hexpand">True</property>
+                <property name="vexpand">True</property>
+                <child>
+                  <object class="GtkListView" id="rules_list"/>
+                </child>
+              </object>
+            </child>
+
+            <!-- Editor -->
+            <child>
+              <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">6</property>
+
+                <!-- Rule Name -->
+                <child><object class="GtkLabel"><property name="label">Rule Name</property><property name="css-classes">rule-label</property></object></child>
+                <child><object class="GtkEntry" id="rule_name"/></child>
+
+                <!-- Pattern App -->
+                <child><object class="GtkLabel"><property name="label">Pattern App</property><property name="css-classes">rule-label</property></object></child>
+                <child><object class="GtkEntry" id="rule_pattern_app"/></child>
+
+                <!-- Pattern Summary -->
+                <child><object class="GtkLabel"><property name="label">Pattern Summary</property><property name="css-classes">rule-label</property></object></child>
+                <child><object class="GtkEntry" id="rule_pattern_summary"/></child>
+
+                <!-- Pattern Body -->
+                <child><object class="GtkLabel"><property name="label">Pattern Body</property><property name="css-classes">rule-label</property></object></child>
+                <child><object class="GtkEntry" id="rule_pattern_body"/></child>
+
+                <!-- Wave -->
+                <child><object class="GtkLabel"><property name="label">Wave</property><property name="css-classes">rule-label</property></object></child>
+                <child><object class="GtkDropDown" id="rule_wave"/></child>
+
+                <!-- Buttons -->
+                <child><object class="GtkButton" id="rule_add"><property name="label">Add New Rule</property></object></child>
+                <child><object class="GtkButton" id="rule_delete"><property name="label">Delete Rule</property></object></child>
+
+              </object>
+            </child>
+
+          </object>
+        </child>
+      </object>
+    </child>
+
+    <!-- Cursor haptics -->
+    <child>
+      <object class="GtkFrame">
+        <property name="label">Cursor Haptics</property>
+
+        <child>
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <property name="spacing">8</property>
+
+            <child>
+              <object class="GtkBox">
+                <property name="orientation">horizontal</property>
+                <property name="spacing">8</property>
+                <child><object class="GtkLabel"><property name="label">Link Wave:</property><property name="css-classes">rule-label</property></object></child>
+                <child><object class="GtkDropDown" id="cursor_link_wave"/></child>
+              </object>
+            </child>
+
+          </object>
+        </child>
+
+      </object>
+    </child>
+
+    <!-- Save Config Button -->
+    <child>
+      <object class="GtkButton" id="save_button">
+        <property name="label">Save Settings</property>
+        <property name="halign">END</property>
+      </object>
+    </child>
+
+  </object>
+
+</interface>

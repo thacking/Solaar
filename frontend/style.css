@@ -1,0 +1,102 @@
+/* Window and root background */
+window, #root {
+  background: #101219;
+  color: #29fcc3;
+  font-family: "Segoe UI", "Arial", sans-serif;
+}
+
+/* Sections and Frames */
+frame {
+  background-color: #272a2c;
+  border: 1.5px solid #29fcc3;
+  border-radius: 9px;
+  padding: 14px;
+}
+
+/* Section headers */
+frame > label {
+  color: #21f6dc;
+  font-weight: bold;
+  font-size: 15px;
+}
+
+label {
+  color: #272a2c;
+  font-size: 14px;
+  font-weight: 600;
+}
+.rule-label {
+  color: #29fcc3;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+entry {
+  background-color: #d1dfe6;
+  color: #272a2c;
+  border: 1px solid #21a4ae;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+entry:insensitive {
+  background-color: #191a1f;
+  color: #9baec8;
+}
+
+button {
+  background: #29fcc3;
+  color: #22272a;
+  font-weight: bold;
+  border-radius: 8px;
+  border: none;
+  padding: 8px 16px;
+  font-size: 14px;
+}
+button:insensitive {
+  background: #101219;
+  color: #9baec8;
+  border: none;
+}
+button:hover {
+  background: #21a4ae;
+  color: #22272a;
+}
+button:active {
+  background: #fb0512;
+  color: #272a2c;
+}
+
+combobox, GtkDropDown {
+  background-color: #181B20;
+  color: #272a2c;
+  border-radius: 7px;
+  border: 1.5px solid #29fcc3;
+  padding: 6px 14px;
+  font-size: 14px;
+}
+combobox:insensitive, GtkDropDown:insensitive {
+  background: #11131a;
+  color: #9baec8;
+}
+
+GtkListView, GtkScrolledWindow {
+  background: #131419;
+  color: #272a2c;
+  border-radius: 7px;
+  font-size: 14px;
+}
+
+checkbutton, GtkCheckButton {
+  color: #272a2c;
+  font-size: 14px;
+}
+
+headerbar, titlebar {
+  background: #181B20;
+  color: #29fcc3;
+  font-weight: bold;
+  font-size: 15px;
+  border-radius: 10px 10px 0 0;
+}

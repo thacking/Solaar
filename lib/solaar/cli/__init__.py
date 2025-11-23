@@ -84,6 +84,20 @@ def _create_parser():
     sp.set_defaults(action="config")
 
     sp = subparsers.add_parser(
+        "haptic",
+        help="inspect or trigger haptic feedback",
+        epilog="Only works on active devices that expose the HID++ haptic feature.",
+    )
+    sp.add_argument(
+        "device",
+        help="device to control; may be a device number (1..6), a serial number, or a substring of the device's name",
+    )
+    sp.add_argument("--list", action="store_true", help="list the current haptic level and available waveforms")
+    sp.add_argument("--level", help="set the haptic level (accepts names such as Low/High or numeric percentages)")
+    sp.add_argument("--play", help="play a single haptic waveform by name or numeric id")
+    sp.set_defaults(action="haptic")
+
+    sp = subparsers.add_parser(
         "pair",
         help="pair a new device",
         epilog="The Logitech Unifying Receiver supports up to 6 paired devices at the same time.",
