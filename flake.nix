@@ -37,6 +37,7 @@
           buildInputs = [
             pythonEnv
             pkgs.gtk3
+            pkgs.gtk4
             pkgs.libnotify
             pkgs.udev
             pkgs.gdk-pixbuf

@@ -170,8 +170,16 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         self.rules.remove(pos)
         self.config["notifications"]["custom"].pop(pos)
-        self.clear_rule_editor()
-        self.rules_selection.unselect_all()
+        
+        # Select the previous item if it exists, otherwise select the first item
+        if len(self.config["notifications"]["custom"]) > 0:
+            new_pos = max(0, pos - 1)
+            self.rules_selection.set_selected(new_pos)
+            # Manually trigger the select handler to populate editor fields
+            self.on_rule_select(self.rules_selection, None)
+        else:
+            self.clear_rule_editor()
+            self.rules_selection.unselect_all()
 
     # Edit rule
     def on_rule_edit(self, *_):
