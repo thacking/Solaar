@@ -173,6 +173,15 @@ class HapticDBusService(dbus.service.Object):
             raise
 
     @dbus.service.method(INTERFACE, in_signature="s", out_signature="b")
+    def PlayWaveform(self, wave: str):  # noqa: N802 (dbus naming)
+        """Alias for PlayWave to match GNOME extension expectations."""
+        try:
+            return dbus.Boolean(self._backend.play_wave(wave))
+        except Exception as exc:
+            logger.error("PlayWaveform failed: %s", exc)
+            raise
+
+    @dbus.service.method(INTERFACE, in_signature="s", out_signature="b")
     def SetLevel(self, level: str):  # noqa: N802
         try:
             return dbus.Boolean(self._backend.apply_level(level))
